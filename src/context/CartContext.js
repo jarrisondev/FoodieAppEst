@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export const CartContext = createContext();
 
+const STORAGE_KEY = '@foodie_cart';
+
 export const CartProvider = ({ children }) => {
   const [cartItems, setCartItems] = useState([]);
   const [cartCount, setCartCount] = useState(0);
@@ -11,17 +13,16 @@ export const CartProvider = ({ children }) => {
     loadCart();
   }, []);
 
-
   useEffect(() => {
     const total = cartItems.reduce((sum, item) => sum + item.quantity, 0);
     setCartCount(total);
-  }, []); 
+  }, [cartItems]);
 
   const loadCart = async () => {
     try {
-      const stored = await AsyncStorage.getItem('@foodie_cart');
+      const stored = await AsyncStorage.getItem(STORAGE_KEY);
       if (stored) {
-        setCartItems(stored); 
+        setCartItems(JSON.parse(stored));
       }
     } catch (error) {
       console.error('Error loading cart:', error);
@@ -30,32 +31,69 @@ export const CartProvider = ({ children }) => {
 
   const saveCart = async (items) => {
     try {
-      await AsyncStorage.setItem('@foodie_cart', items); 
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     } catch (error) {
       console.error('Error saving cart:', error);
     }
   };
-  
+
   const addToCart = (dish) => {
-    const updatedCart = [...cartItems];
-    updatedCart.push({  
-      id: dish.id,
-      name: dish.name,
-      price: dish.price,
-      image: dish.image,
-      quantity: 1,
-    });
+    const existing = cartItems.find((item) => item.id === dish.id);
+    let updatedCart;
+    if (existing) {
+      updatedCart = cartItems.map((item) =>
+        item.id === dish.id ? { ...item, quantity: item.quantity + 1 } : item
+      );
+    } else {
+      updatedCart = [
+        ...cartItems,
+        {
+          id: dish.id,
+          name: dish.name,
+          price: dish.price,
+          image: dish.image,
+          quantity: 1,
+          notes: '',
+        },
+      ];
+    }
     setCartItems(updatedCart);
     saveCart(updatedCart);
   };
-  
+
   const removeFromCart = (dishId) => {
-    const updatedCart = cartItems;  
-    const index = updatedCart.findIndex(item => item.id === dishId);
-    if (index > -1) {
-      updatedCart.splice(index, 1);  
+    const updatedCart = cartItems.filter((item) => item.id !== dishId);
+    setCartItems(updatedCart);
+    saveCart(updatedCart);
+  };
+
+  const incrementQuantity = (dishId) => {
+    const updatedCart = cartItems.map((item) =>
+      item.id === dishId ? { ...item, quantity: item.quantity + 1 } : item
+    );
+    setCartItems(updatedCart);
+    saveCart(updatedCart);
+  };
+
+  const decrementQuantity = (dishId) => {
+    const target = cartItems.find((item) => item.id === dishId);
+    if (!target) return;
+    if (target.quantity <= 1) {
+      removeFromCart(dishId);
+      return;
     }
-    setCartItems(updatedCart); 
+    const updatedCart = cartItems.map((item) =>
+      item.id === dishId ? { ...item, quantity: item.quantity - 1 } : item
+    );
+    setCartItems(updatedCart);
+    saveCart(updatedCart);
+  };
+
+  const updateNotes = (dishId, notes) => {
+    const updatedCart = cartItems.map((item) =>
+      item.id === dishId ? { ...item, notes } : item
+    );
+    setCartItems(updatedCart);
     saveCart(updatedCart);
   };
 
@@ -65,7 +103,7 @@ export const CartProvider = ({ children }) => {
   };
 
   const getCartTotal = () => {
-    return cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    return cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   };
 
   return (
@@ -75,6 +113,9 @@ export const CartProvider = ({ children }) => {
         cartCount,
         addToCart,
         removeFromCart,
+        incrementQuantity,
+        decrementQuantity,
+        updateNotes,
         clearCart,
         getCartTotal,
       }}

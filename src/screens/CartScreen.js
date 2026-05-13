@@ -1,12 +1,34 @@
 import React, { useContext } from 'react';
-import {View,Text,FlatList,TouchableOpacity,Alert,StyleSheet} from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  Alert,
+  StyleSheet,
+  TextInput,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CartContext } from '../context/CartContext';
 import { db } from '../config/firebase';
 import { COLORS, globalStyles } from '../styles/globalStyles';
 
+const IVA_RATE = 0.19;
+
 const CartScreen = ({ navigation }) => {
-  const { cartItems, removeFromCart, clearCart, getCartTotal } = useContext(CartContext);
+  const {
+    cartItems,
+    removeFromCart,
+    clearCart,
+    getCartTotal,
+    incrementQuantity,
+    decrementQuantity,
+    updateNotes,
+  } = useContext(CartContext);
+
+  const subtotal = getCartTotal();
+  const iva = subtotal * IVA_RATE;
+  const total = subtotal + iva;
 
   const handleConfirmOrder = async () => {
     if (cartItems.length === 0) {
@@ -15,9 +37,11 @@ const CartScreen = ({ navigation }) => {
     }
 
     try {
-        await db.collection('orders').add({
+      await db.collection('orders').add({
         items: cartItems,
-        total: getCartTotal(),
+        subtotal,
+        iva,
+        total,
         status: 'confirmed',
         createdAt: new Date().toISOString(),
       });
@@ -41,23 +65,24 @@ const CartScreen = ({ navigation }) => {
       `¿Deseas eliminar ${item.name}?`,
       [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Eliminar', style: 'destructive', onPress: () => removeFromCart(item.id) },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: () => removeFromCart(item.id),
+        },
       ]
     );
   };
 
   const renderCartItem = ({ item }) => (
     <View style={styles.cartItemCard}>
-      <View style={styles.itemInfo}>
-        <Text style={styles.itemName}>{item.name}</Text>
-        <Text style={styles.itemPrice}>
-          ${item.price.toLocaleString('es-CO')} x {item.quantity}
-        </Text>
-      </View>
-      <View style={styles.itemActions}>
-        <Text style={styles.itemSubtotal}>
-          ${(item.price * item.quantity).toLocaleString('es-CO')}
-        </Text>
+      <View style={styles.topRow}>
+        <View style={styles.itemInfo}>
+          <Text style={styles.itemName}>{item.name}</Text>
+          <Text style={styles.itemPrice}>
+            ${item.price.toLocaleString('es-CO')} c/u
+          </Text>
+        </View>
         <TouchableOpacity
           style={styles.removeButton}
           onPress={() => handleRemoveItem(item)}
@@ -65,10 +90,38 @@ const CartScreen = ({ navigation }) => {
           <Text style={styles.removeButtonText}>✕</Text>
         </TouchableOpacity>
       </View>
+
+      <View style={styles.bottomRow}>
+        <View style={styles.qtyContainer}>
+          <TouchableOpacity
+            style={styles.qtyButton}
+            onPress={() => decrementQuantity(item.id)}
+          >
+            <Text style={styles.qtyButtonText}>−</Text>
+          </TouchableOpacity>
+          <Text style={styles.qtyValue}>{item.quantity}</Text>
+          <TouchableOpacity
+            style={styles.qtyButton}
+            onPress={() => incrementQuantity(item.id)}
+          >
+            <Text style={styles.qtyButtonText}>+</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.itemSubtotal}>
+          ${(item.price * item.quantity).toLocaleString('es-CO')}
+        </Text>
+      </View>
+
+      <TextInput
+        style={styles.notesInput}
+        placeholder="Notas especiales: sin cebolla, extra picante..."
+        placeholderTextColor={COLORS.disabled}
+        value={item.notes || ''}
+        onChangeText={(text) => updateNotes(item.id, text)}
+        multiline
+      />
     </View>
   );
-
-  const subtotal = getCartTotal();
 
   return (
     <SafeAreaView style={globalStyles.safeArea}>
@@ -76,12 +129,14 @@ const CartScreen = ({ navigation }) => {
         <View style={styles.header}>
           <Text style={globalStyles.title}>Mi Carrito 🛒</Text>
           {cartItems.length > 0 && (
-            <TouchableOpacity onPress={() => {
-              Alert.alert('Vaciar carrito', '¿Estás seguro?', [
-                { text: 'Cancelar', style: 'cancel' },
-                { text: 'Vaciar', style: 'destructive', onPress: clearCart },
-              ]);
-            }}>
+            <TouchableOpacity
+              onPress={() => {
+                Alert.alert('Vaciar carrito', '¿Estás seguro?', [
+                  { text: 'Cancelar', style: 'cancel' },
+                  { text: 'Vaciar', style: 'destructive', onPress: clearCart },
+                ]);
+              }}
+            >
               <Text style={styles.clearText}>Vaciar</Text>
             </TouchableOpacity>
           )}
@@ -114,17 +169,25 @@ const CartScreen = ({ navigation }) => {
                 ${subtotal.toLocaleString('es-CO')}
               </Text>
             </View>
+            <View style={styles.totalRow}>
+              <Text style={styles.totalLabel}>IVA (19%)</Text>
+              <Text style={styles.totalValue}>
+                ${Math.round(iva).toLocaleString('es-CO')}
+              </Text>
+            </View>
             <View style={[styles.totalRow, styles.grandTotal]}>
               <Text style={styles.grandTotalLabel}>Total</Text>
               <Text style={styles.grandTotalValue}>
-                ${subtotal.toLocaleString('es-CO')}
+                ${Math.round(total).toLocaleString('es-CO')}
               </Text>
             </View>
             <TouchableOpacity
               style={styles.confirmButton}
               onPress={handleConfirmOrder}
             >
-              <Text style={styles.confirmButtonText}>Confirmar Pedido</Text>
+              <Text style={styles.confirmButtonText}>
+                Confirmar Pedido • ${Math.round(total).toLocaleString('es-CO')}
+              </Text>
             </TouchableOpacity>
           </View>
         )}
@@ -153,16 +216,18 @@ const styles = StyleSheet.create({
   cartItemCard: {
     backgroundColor: COLORS.surface,
     borderRadius: 12,
-    padding: 16,
+    padding: 14,
     marginBottom: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.06,
     shadowRadius: 3,
     elevation: 2,
+  },
+  topRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
   },
   itemInfo: {
     flex: 1,
@@ -178,14 +243,43 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textSecondary,
   },
-  itemActions: {
-    alignItems: 'flex-end',
+  bottomRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
   },
-  itemSubtotal: {
-    fontSize: 16,
+  qtyContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  qtyButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  qtyButtonText: {
+    fontSize: 20,
     fontWeight: '700',
     color: COLORS.primary,
-    marginBottom: 8,
+  },
+  qtyValue: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginHorizontal: 14,
+    minWidth: 24,
+    textAlign: 'center',
+  },
+  itemSubtotal: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   removeButton: {
     backgroundColor: '#FEE2E2',
@@ -199,6 +293,18 @@ const styles = StyleSheet.create({
     color: COLORS.error,
     fontSize: 14,
     fontWeight: '700',
+  },
+  notesInput: {
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    color: COLORS.textPrimary,
+    backgroundColor: COLORS.background,
+    minHeight: 38,
   },
   bottomSection: {
     padding: 16,

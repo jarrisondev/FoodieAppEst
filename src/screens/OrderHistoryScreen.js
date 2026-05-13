@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import {View,Text,FlatList,TouchableOpacity,ActivityIndicator,StyleSheet} from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { db } from '../config/firebase';
 import { COLORS, globalStyles } from '../styles/globalStyles';
@@ -7,6 +14,7 @@ import { COLORS, globalStyles } from '../styles/globalStyles';
 const OrderHistoryScreen = ({ navigation }) => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [localRatings, setLocalRatings] = useState({});
 
   useEffect(() => {
     let unsubscribe;
@@ -16,7 +24,7 @@ const OrderHistoryScreen = ({ navigation }) => {
         .orderBy('createdAt', 'desc')
         .onSnapshot(
           (snapshot) => {
-            const ordersData = snapshot.docs.map(doc => ({
+            const ordersData = snapshot.docs.map((doc) => ({
               id: doc.id,
               ...doc.data(),
             }));
@@ -34,23 +42,43 @@ const OrderHistoryScreen = ({ navigation }) => {
       setOrders([]);
       setLoading(false);
     }
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }, []);
+
+  const rateOrder = async (orderId, rating) => {
+    setLocalRatings((prev) => ({ ...prev, [orderId]: rating }));
+    try {
+      await db.collection('orders').doc(orderId).update({ rating });
+    } catch (error) {
+      console.log('Rating saved locally only:', error.message);
+    }
+  };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'confirmed': return COLORS.primary;
-      case 'preparing': return COLORS.warning;
-      case 'delivered': return COLORS.success;
-      default: return COLORS.textSecondary;
+      case 'confirmed':
+        return COLORS.primary;
+      case 'preparing':
+        return COLORS.warning;
+      case 'delivered':
+        return COLORS.success;
+      default:
+        return COLORS.textSecondary;
     }
   };
 
   const getStatusLabel = (status) => {
     switch (status) {
-      case 'confirmed': return 'Confirmado';
-      case 'preparing': return 'Preparando';
-      case 'delivered': return 'Entregado';
-      default: return status;
+      case 'confirmed':
+        return 'Confirmado';
+      case 'preparing':
+        return 'Preparando';
+      case 'delivered':
+        return 'Entregado';
+      default:
+        return status;
     }
   };
 
@@ -69,15 +97,54 @@ const OrderHistoryScreen = ({ navigation }) => {
     }
   };
 
+  const renderStars = (item) => {
+    const currentRating = item.rating || localRatings[item.id] || 0;
+    const locked = !!item.rating;
+    return (
+      <View style={styles.starsRow}>
+        <Text style={styles.starsLabel}>
+          {locked ? 'Tu calificación:' : 'Calificar pedido:'}
+        </Text>
+        <View style={{ flexDirection: 'row' }}>
+          {[1, 2, 3, 4, 5].map((n) => (
+            <TouchableOpacity
+              key={n}
+              disabled={locked}
+              onPress={() => rateOrder(item.id, n)}
+            >
+              <Text
+                style={[
+                  styles.star,
+                  n <= currentRating && styles.starActive,
+                ]}
+              >
+                {n <= currentRating ? '★' : '☆'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+    );
+  };
+
   const renderOrderItem = ({ item }) => (
     <TouchableOpacity
       style={styles.orderCard}
       onPress={() => navigation.navigate('OrderDetail', { order: item })}
     >
       <View style={styles.orderHeader}>
-        <Text style={styles.orderId}>Pedido #{item.id.slice(-6).toUpperCase()}</Text>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) + '20' }]}>
-          <Text style={[styles.statusText, { color: getStatusColor(item.status) }]}>
+        <Text style={styles.orderId}>
+          Pedido #{item.id.slice(-6).toUpperCase()}
+        </Text>
+        <View
+          style={[
+            styles.statusBadge,
+            { backgroundColor: getStatusColor(item.status) + '20' },
+          ]}
+        >
+          <Text
+            style={[styles.statusText, { color: getStatusColor(item.status) }]}
+          >
             {getStatusLabel(item.status)}
           </Text>
         </View>
@@ -104,6 +171,8 @@ const OrderHistoryScreen = ({ navigation }) => {
         </Text>
         <Text style={styles.viewDetail}>Ver detalle →</Text>
       </View>
+
+      {item.status === 'delivered' && renderStars(item)}
     </TouchableOpacity>
   );
 
@@ -224,6 +293,28 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textSecondary,
     fontWeight: '500',
+  },
+  starsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  starsLabel: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  star: {
+    fontSize: 22,
+    color: COLORS.disabled,
+    marginHorizontal: 2,
+  },
+  starActive: {
+    color: COLORS.star,
   },
 });
 

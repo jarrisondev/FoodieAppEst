@@ -1,58 +1,123 @@
-import React, { useContext } from 'react';
-import {View,Text,Image,TouchableOpacity,Alert,StyleSheet} from 'react-native';
+import React, { useContext, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  Alert,
+  StyleSheet,
+  ScrollView,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CartContext } from '../context/CartContext';
 import { COLORS, globalStyles } from '../styles/globalStyles';
 
+const FAVORITES_KEY = '@foodie_favorites';
+
 const DishDetailScreen = ({ route, navigation }) => {
   const { addToCart } = useContext(CartContext);
-  const { dish } = route.params; 
+  const {
+    dishId,
+    dishName,
+    dishPrice,
+    dishDescription,
+    dishImage,
+    dishRating,
+    dishCategory,
+  } = route.params || {};
+
+  const [isFavorite, setIsFavorite] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const stored = await AsyncStorage.getItem(FAVORITES_KEY);
+        const favorites = stored ? JSON.parse(stored) : [];
+        setIsFavorite(favorites.some((fav) => fav.id === dishId));
+      } catch (error) {
+        console.error('Error loading favorites:', error);
+      }
+    })();
+  }, [dishId]);
+
+  const toggleFavorite = async () => {
+    try {
+      const stored = await AsyncStorage.getItem(FAVORITES_KEY);
+      const favorites = stored ? JSON.parse(stored) : [];
+      const exists = favorites.some((fav) => fav.id === dishId);
+      const updated = exists
+        ? favorites.filter((fav) => fav.id !== dishId)
+        : [
+            ...favorites,
+            {
+              id: dishId,
+              name: dishName,
+              price: dishPrice,
+              image: dishImage,
+              category: dishCategory,
+            },
+          ];
+      await AsyncStorage.setItem(FAVORITES_KEY, JSON.stringify(updated));
+      setIsFavorite(!exists);
+    } catch (error) {
+      console.error('Error saving favorite:', error);
+    }
+  };
 
   const handleAddToCart = () => {
     addToCart({
-      id: dish.dishId,         
-      name: dish.dishName,
-      price: dish.dishPrice,
-      image: dish.dishImage,
+      id: dishId,
+      name: dishName,
+      price: dishPrice,
+      image: dishImage,
     });
-    Alert.alert(
-      '¡Agregado!',
-      `${dish.dishName} se agregó al carrito`,
-      [
-        { text: 'Seguir viendo', style: 'cancel' },
-        { text: 'Ver carrito', onPress: () => navigation.navigate('CartTab') },
-      ]
-    );
+    Alert.alert('¡Agregado!', `${dishName} se agregó al carrito`, [
+      { text: 'Seguir viendo', style: 'cancel' },
+      { text: 'Ver carrito', onPress: () => navigation.navigate('CartTab') },
+    ]);
   };
 
   return (
     <SafeAreaView style={globalStyles.safeArea} edges={['bottom']}>
       <ScrollView style={globalStyles.container}>
         <Image
-          source={{ uri: dish?.dishImage || 'https://via.placeholder.com/400x250' }}
+          source={{ uri: dishImage || 'https://via.placeholder.com/400x250' }}
           style={styles.heroImage}
           resizeMode="cover"
         />
         <View style={styles.contentContainer}>
           <View style={styles.headerRow}>
-            <Text style={styles.dishName}>{dish?.dishName || 'Plato no encontrado'}</Text>
+            <Text style={styles.dishName}>{dishName || 'Plato no encontrado'}</Text>
             <View style={styles.ratingBadge}>
               <Text style={styles.ratingStar}>★</Text>
-              <Text style={styles.ratingText}>{dish?.dishRating || '0.0'}</Text>
+              <Text style={styles.ratingText}>{dishRating || '0.0'}</Text>
             </View>
           </View>
 
-          <Text style={styles.category}>{dish?.dishCategory || 'Sin categoría'}</Text>
+          <View style={styles.subHeaderRow}>
+            <Text style={styles.category}>{dishCategory || 'Sin categoría'}</Text>
+            <TouchableOpacity onPress={toggleFavorite} style={styles.favoriteButton}>
+              <Text
+                style={[
+                  styles.favoriteIcon,
+                  isFavorite && styles.favoriteIconActive,
+                ]}
+              >
+                {isFavorite ? '♥' : '♡'}
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           <Text style={styles.price}>
-            ${(dish?.dishPrice || 0).toLocaleString('es-CO')}
+            ${(dishPrice || 0).toLocaleString('es-CO')}
           </Text>
 
           <View style={globalStyles.divider} />
 
           <Text style={styles.sectionTitle}>Descripción</Text>
           <Text style={styles.description}>
-            {dish?.dishDescription || 'Sin descripción disponible.'}
+            {dishDescription || 'Sin descripción disponible.'}
           </Text>
         </View>
       </ScrollView>
@@ -60,11 +125,11 @@ const DishDetailScreen = ({ route, navigation }) => {
       <View style={styles.bottomBar}>
         <TouchableOpacity
           style={styles.addToCartButton}
-          onClick={handleAddToCart}
+          onPress={handleAddToCart}
         >
           <Text style={styles.addToCartText}>🛒 Agregar al Carrito</Text>
           <Text style={styles.addToCartPrice}>
-            ${(dish?.dishPrice || 0).toLocaleString('es-CO')}
+            ${(dishPrice || 0).toLocaleString('es-CO')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -111,11 +176,27 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#92400E',
   },
+  subHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 6,
+    marginBottom: 10,
+  },
   category: {
     fontSize: 14,
     color: COLORS.textSecondary,
-    marginTop: 6,
-    marginBottom: 10,
+  },
+  favoriteButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  favoriteIcon: {
+    fontSize: 28,
+    color: COLORS.textSecondary,
+  },
+  favoriteIconActive: {
+    color: COLORS.error,
   },
   price: {
     fontSize: 26,

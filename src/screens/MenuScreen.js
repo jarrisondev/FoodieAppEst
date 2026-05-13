@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useContext } from 'react';
-import {View,Text,FlatList,TouchableOpacity,Image,ActivityIndicator,StyleSheet} from 'react-native';
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  Image,
+  ActivityIndicator,
+  StyleSheet,
+  TextInput,
+  ScrollView,
+} from 'react-native';
 import { CartContext } from '../context/CartContext';
 import { db } from '../config/firebase';
 import { LOCAL_MENU, CATEGORIES } from '../utils/seedData';
@@ -9,23 +19,24 @@ const MenuScreen = ({ navigation }) => {
   const [dishes, setDishes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('Todas');
+  const [search, setSearch] = useState('');
   const { cartCount } = useContext(CartContext);
 
   useEffect(() => {
     fetchMenu();
-  }); 
+  }, []);
 
   const fetchMenu = async () => {
     try {
       const snapshot = await db.collection('menu').get();
       if (!snapshot.empty) {
-        const menuData = snapshot.docs.map(doc => ({
+        const menuData = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
         }));
         setDishes(menuData);
       } else {
-          setDishes(LOCAL_MENU);
+        setDishes(LOCAL_MENU);
       }
     } catch (error) {
       console.log('Using local menu data:', error.message);
@@ -35,9 +46,13 @@ const MenuScreen = ({ navigation }) => {
     }
   };
 
-  const filteredDishes = selectedCategory === 'Todas'
-    ? dishes
-    : dishes.filter(dish => dish.category === selectedCategory);
+  const filteredDishes = dishes
+    .filter((dish) =>
+      selectedCategory === 'Todas' ? true : dish.category === selectedCategory
+    )
+    .filter((dish) =>
+      dish.name.toLowerCase().includes(search.trim().toLowerCase())
+    );
 
   const renderDishItem = ({ item }) => (
     <TouchableOpacity
@@ -86,23 +101,62 @@ const MenuScreen = ({ navigation }) => {
 
   return (
     <View style={globalStyles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <Text style={globalStyles.title}>FoodieApp 🍽️</Text>
         <Text style={globalStyles.bodyText}>
           {filteredDishes.length} platos disponibles
         </Text>
       </View>
+
+      <View style={styles.searchRow}>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar platos..."
+          placeholderTextColor={COLORS.disabled}
+          value={search}
+          onChangeText={setSearch}
+        />
+        {search.length > 0 && (
+          <TouchableOpacity
+            style={styles.searchClear}
+            onPress={() => setSearch('')}
+          >
+            <Text style={styles.searchClearText}>✕</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categoriesRow}
+      >
+        {CATEGORIES.map((cat) => {
+          const active = cat === selectedCategory;
+          return (
+            <TouchableOpacity
+              key={cat}
+              style={[styles.chip, active && styles.chipActive]}
+              onPress={() => setSelectedCategory(cat)}
+            >
+              <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+
       <FlatList
         data={filteredDishes}
         renderItem={renderDishItem}
-        keyExtractor={(item, index) => index.toString()} 
+        keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={globalStyles.emptyState}>
             <Text style={globalStyles.emptyText}>
-              No hay platos disponibles
+              No se encontraron platos
             </Text>
           </View>
         }
@@ -116,6 +170,62 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 8,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 10,
+  },
+  searchInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 15,
+    color: COLORS.textPrimary,
+    backgroundColor: COLORS.surface,
+  },
+  searchClear: {
+    marginLeft: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchClearText: {
+    color: COLORS.error,
+    fontWeight: '700',
+  },
+  categoriesRow: {
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 8,
+  },
+  chip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginRight: 8,
+  },
+  chipActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  chipText: {
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  chipTextActive: {
+    color: '#FFFFFF',
   },
   listContainer: {
     paddingHorizontal: 16,
